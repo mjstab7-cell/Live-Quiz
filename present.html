@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Quiz — Present</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  body { margin:0; font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:#111827; color:#fff; height:100vh; display:flex; flex-direction:column; }
+  header { padding:16px 24px; display:flex; justify-content:space-between; align-items:center; background:#0b0f19; }
+  header .brand { font-weight:700; letter-spacing:0.5px; }
+  header .count { color:#9ca3af; font-size:14px; }
+  main { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; text-align:center; }
+  #waiting { font-size:20px; color:#9ca3af; }
+  #qbox { max-width:900px; width:100%; }
+  #qtext { font-size:36px; font-weight:700; margin-bottom:28px; }
+  .options { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .opt { background:#1f2937; border-radius:12px; padding:18px; text-align:left; }
+  .opt-label { font-size:18px; margin-bottom:10px; }
+  .bar-bg { background:#374151; border-radius:6px; overflow:hidden; height:22px; }
+  .bar-fill { background:#22c55e; height:100%; width:0%; transition:width .3s ease; }
+  .opt-count { font-size:13px; color:#9ca3af; margin-top:6px; }
+  footer { padding:16px 24px; display:flex; justify-content:space-between; align-items:center; background:#0b0f19; }
+  #qrwrap { background:#fff; padding:8px; border-radius:8px; }
+  #joinurl { font-size:13px; color:#9ca3af; margin-top:6px; }
+  .navhint { color:#6b7280; font-size:13px; }
+  img.qmedia { max-width:100%; max-height:320px; border-radius:12px; margin-bottom:20px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">🧠 Live Quiz</div>
+  <div class="count" id="pcount">0 joined</div>
+</header>
+
+<main>
+  <div id="waiting">
+    <div id="qrwrap"></div>
+    <div id="joinurl"></div>
+    <p style="margin-top:20px;">Scan the QR code to join, then press Next to start.</p>
+  </div>
+
+  <div id="qbox" style="display:none;">
+    <img id="qmedia" class="qmedia" style="display:none;">
+    <div id="qtext"></div>
+    <div class="options" id="options"></div>
+  </div>
+</main>
+
+<footer>
+  <div class="navhint">Use ◀ ▶ / Page Up / Page Down, or the clicker, to change slides</div>
+  <div>
+    <button onclick="prevQ()" style="margin-right:8px;">◀ Prev</button>
+    <button onclick="nextQ()">Next ▶</button>
+  </div>
+</footer>
+
+<script>
+const socket = io();
+const colors = ["#3b82f6","#f59e0b","#ef4444","#a855f7","#10b981","#ec4899"];
+
+// QR code -> points at this same site's /join page
+const joinUrl = window.location.origin + "/join";
+new QRCode(document.getElementById("qrwrap"), { text: joinUrl, width: 220, height: 220 });
+document.getElementById("joinurl").innerText = joinUrl;
+
+function nextQ(){ socket.emit("next_question"); }
+function prevQ(){ socket.emit("prev_question"); }
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "PageDown" || e.key === "ArrowRight") nextQ();
+  if (e.key === "PageUp" || e.key === "ArrowLeft") prevQ();
+});
+
+socket.on("state_update", (s) => {
+  document.getElementById("pcount").innerText = s.num_participants + " joined";
+
+  if (s.current_question < 0) {
+    document.getElementById("waiting").style.display = "block";
+    document.getElementById("qbox").style.display = "none";
+    return;
+  }
+
+  document.getElementById("waiting").style.display = "none";
+  document.getElementById("qbox").style.display = "block";
+
+  const q = s.question;
+  document.getElementById("qtext").innerText = q.text;
+
+  const media = document.getElementById("qmedia");
+  if (q.media_type === "image" && q.media_url) {
+    media.src = q.media_url;
+    media.style.display = "block";
+  } else {
+    media.style.display = "none";
+  }
+
+  const tally = s.tally || {};
+  const total = Object.values(tally).reduce((a,b) => a+b, 0) || 1;
+
+  const optsDiv = document.getElementById("options");
+  optsDiv.innerHTML = "";
+  q.options.forEach((opt, i) => {
+    const count = tally[i] || 0;
+    const pct = Math.round((count/total)*100);
+    const el = document.createElement("div");
+    el.className = "opt";
+    el.innerHTML = `
+      <div class="opt-label">${String.fromCharCode(65+i)}. ${opt}</div>
+      <div class="bar-bg"><div class="bar-fill" style="width:${pct}%; background:${colors[i % colors.length]}"></div></div>
+      <div class="opt-count">${count} vote(s) — ${pct}%</div>
+    `;
+    optsDiv.appendChild(el);
+  });
+});
+</script>
+</body>
+</html>

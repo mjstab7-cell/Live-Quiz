@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Join Quiz</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+  body { margin:0; font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:#111827; color:#fff; min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:20px; box-sizing:border-box; }
+  h1 { font-size:22px; margin-bottom:24px; }
+  input { width:100%; max-width:320px; padding:14px; border-radius:10px; border:none; font-size:16px; margin-bottom:12px; box-sizing:border-box; }
+  button { width:100%; max-width:320px; padding:14px; border-radius:10px; border:none; background:#3b82f6; color:#fff; font-size:16px; font-weight:600; }
+  #qtext { font-size:22px; font-weight:700; margin-bottom:20px; text-align:center; max-width:400px; }
+  .opt-btn { width:100%; max-width:400px; padding:16px; border-radius:12px; border:none; background:#1f2937; color:#fff; font-size:17px; margin-bottom:12px; text-align:left; }
+  .opt-btn.selected { background:#3b82f6; }
+  .opt-btn:disabled { opacity:0.6; }
+  #waiting, #answered { color:#9ca3af; font-size:16px; margin-top:30px; text-align:center; }
+  img.qmedia { max-width:100%; max-height:220px; border-radius:12px; margin-bottom:16px; }
+</style>
+</head>
+<body>
+
+<div id="nameScreen">
+  <h1>Enter your name to join</h1>
+  <input id="nameInput" placeholder="Your name" maxlength="30">
+  <button onclick="registerName()">Join Quiz</button>
+</div>
+
+<div id="quizScreen" style="display:none; width:100%; display:flex; flex-direction:column; align-items:center;">
+  <div id="waiting">Waiting for the host to start the next question…</div>
+  <div id="qbox" style="display:none; width:100%; display:flex; flex-direction:column; align-items:center;">
+    <img id="qmedia" class="qmedia" style="display:none;">
+    <div id="qtext"></div>
+    <div id="options" style="width:100%; display:flex; flex-direction:column; align-items:center;"></div>
+  </div>
+  <div id="answered" style="display:none;">✅ Answer submitted — waiting for next question…</div>
+</div>
+
+<script>
+const socket = io();
+let currentQ = -1;
+let hasAnswered = false;
+
+function registerName(){
+  const name = document.getElementById("nameInput").value.trim();
+  if (!name) { alert("Please enter your name"); return; }
+  socket.emit("register_participant", { name: name });
+  document.getElementById("nameScreen").style.display = "none";
+  document.getElementById("quizScreen").style.display = "flex";
+}
+
+function submitAnswer(choice, btn){
+  if (hasAnswered) return;
+  hasAnswered = true;
+  socket.emit("submit_answer", { choice: choice });
+  document.querySelectorAll(".opt-btn").forEach(b => b.disabled = true);
+  btn.classList.add("selected");
+}
+
+socket.on("state_update", (s) => {
+  if (s.current_question !== currentQ) {
+    currentQ = s.current_question;
+    hasAnswered = false;
+  }
+
+  const waiting = document.getElementById("waiting");
+  const qbox = document.getElementById("qbox");
+  const answered = document.getElementById("answered");
+
+  if (currentQ < 0) {
+    waiting.style.display = "block";
+    qbox.style.display = "none";
+    answered.style.display = "none";
+    return;
+  }
+
+  if (hasAnswered) {
+    waiting.style.display = "none";
+    qbox.style.display = "none";
+    answered.style.display = "block";
+    return;
+  }
+
+  answered.style.display = "none";
+  waiting.style.display = "none";
+  qbox.style.display = "flex";
+
+  const q = s.question;
+  document.getElementById("qtext").innerText = q.text;
+
+  const media = document.getElementById("qmedia");
+  if (q.media_type === "image" && q.media_url) {
+    media.src = q.media_url;
+    media.style.display = "block";
+  } else {
+    media.style.display = "none";
+  }
+
+  const optsDiv = document.getElementById("options");
+  optsDiv.innerHTML = "";
+  q.options.forEach((opt, i) => {
+    const btn = document.createElement("button");
+    btn.className = "opt-btn";
+    btn.innerText = String.fromCharCode(65+i) + ". " + opt;
+    btn.onclick = () => submitAnswer(i, btn);
+    optsDiv.appendChild(btn);
+  });
+});
+</script>
+</body>
+</html>
